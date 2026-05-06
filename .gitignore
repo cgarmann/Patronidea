@@ -1,0 +1,46 @@
+# Firebase
+.firebase/
+firebase-debug.log
+.firebaserc
+
+# Flutter
+share_idea_app/.dart_tool/
+share_idea_app/.flutter-plugins
+share_idea_app/.flutter-plugins-dependencies
+share_idea_app/build/
+share_idea_app/android/app/build/
+share_idea_app/android/app/.cxx/
+share_idea_app/.packages
+share_idea_app/Space_Grotesk.zip
+share_idea_app/flutter-*.log
+share_idea_app/devtools_options.yaml
+
+# Android
+share_idea_app/android/.gradle/
+share_idea_app/android/local.properties
+share_idea_app/android/key.properties
+share_idea_app/android/app/google-services.json
+*.jks
+*.keystore
+
+# Firebase config (NEVER commit these)
+share_idea_app/lib/firebase_options.dart
+google-services.json
+GoogleService-Info.plist
+
+# Node / Cloud Functions
+firebase/functions/node_modules/
+firebase/functions/firestore-debug.log
+
+# IDE
+.claude/
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local scratch
+recursing-noyce-*

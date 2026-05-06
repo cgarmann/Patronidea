@@ -1,0 +1,227 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return signedIn()
+        && ('email_verified' in request.auth.token)
+        && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    // Patron må ha akseptert gjeldende NDA-versjon for å se idé-projeksjoner.
+    // Når NDA bumpes, oppdater versjonen her og i klient-flyten.
+    function hasAcceptedCurrentNDA() {
+      return signedIn()
+        && exists(
+        /databases/$(database)/documents/users/$(request.auth.uid)/consents/nda_v1
+        )
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)/consents/nda_v1).data.type == 'nda'
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)/consents/nda_v1).data.version == 'v1'
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)/consents/nda_v1).data.textHash is string
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)/consents/nda_v1).data.acceptedAt <= request.time;
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function subscriptionDoc() {
+      return get(/databases/$(database)/documents/subscriptions/$(request.auth.uid));
+    }
+
+    function hasUsableAccount() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && (
+          !('accountStatus' in userDoc().data) ||
+          userDoc().data.accountStatus == 'active'
+        );
+    }
+
+    function hasActiveSubscription() {
+      return isVerified()
+        && hasUsableAccount()
+        && subscriptionDoc().data.status == 'active'
+        && subscriptionDoc().data.endDate > request.time;
+    }
+
+    function isAdmin() {
+      return signedIn()
+        && (
+          request.auth.token.admin == true ||
+          exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+        );
+    }
+
+    function pitchDoc(pitchId) {
+      return get(/databases/$(database)/documents/pitches/$(pitchId));
+    }
+
+    function isPitchParticipant(pitchId) {
+      return signedIn()
+        && (
+          pitchDoc(pitchId).data.patronId == request.auth.uid ||
+          pitchDoc(pitchId).data.innovatorId == request.auth.uid
+        );
+    }
+
+    function isValidRole(role) {
+      return role in ['innovator', 'patron', 'both'];
+    }
+
+    function isValidUserCreate(uid) {
+      let d = request.resource.data;
+      return isOwner(uid)
+        && d.keys().hasOnly([
+          'displayName',
+          'email',
+          'role',
+          'isActivePatron',
+          'subscriptionExpiry',
+          'createdAt',
+          'updatedAt'
+        ])
+        && d.displayName is string
+        && d.email is string
+        && isValidRole(d.role)
+        // Legacy client fields may exist, but cannot grant access.
+        && (!('isActivePatron' in d) || d.isActivePatron == false)
+        && (!('subscriptionExpiry' in d) || d.subscriptionExpiry == null);
+    }
+
+    function isValidUserUpdate() {
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      return changed.hasOnly(['displayName', 'role', 'updatedAt'])
+        && (!('role' in request.resource.data) || isValidRole(request.resource.data.role));
+    }
+
+    function isValidConsentCreate(consentId) {
+      let d = request.resource.data;
+      return d.keys().hasAll(['type', 'version', 'textHash', 'acceptedAt'])
+        && d.keys().hasOnly(['type', 'version', 'textHash', 'acceptedAt'])
+        && d.type is string
+        && d.version is string
+        && d.textHash is string
+        && d.acceptedAt == request.time
+        && (
+          (consentId == 'nda_v1' && d.type == 'nda' && d.version == 'v1') ||
+          (consentId == 'submission_disclosure_v1' && d.type == 'submission_disclosure' && d.version == 'v1') ||
+          (consentId == 'privacy_v1' && d.type == 'privacy' && d.version == 'v1')
+        );
+    }
+
+    match /users/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow create: if isValidUserCreate(uid);
+      allow update: if isOwner(uid) && isValidUserUpdate();
+      allow delete: if false;
+
+      // Samtykke-poster — append-only for bevisførsel.
+      // Eksempler på consentId: 'nda_v1', 'submission_disclosure_v1', 'privacy_v1'
+      match /consents/{consentId} {
+        allow read: if isOwner(uid);
+        allow create: if isOwner(uid) && isValidConsentCreate(consentId);
+        allow update, delete: if false;
+      }
+    }
+
+    match /subscriptions/{uid} {
+      allow read: if isOwner(uid);
+      allow write: if false;
+    }
+
+    match /admins/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow write: if false;
+    }
+
+    // Private canonical idea records. These may contain innovatorId and other
+    // owner-sensitive fields, so patrons must never read them.
+    match /ideas/{ideaId} {
+      allow read: if signedIn()
+        && (
+          resource.data.innovatorId == request.auth.uid ||
+          isAdmin()
+        );
+      allow create, update, delete: if false;
+    }
+
+    // Patron-facing projection. It intentionally excludes innovatorId.
+    // Patron må også ha akseptert gjeldende NDA — uten dette holder ikke
+    // forretningshemmelighet-konstruksjonen i ToS.
+    match /publicIdeas/{ideaId} {
+      allow read: if hasActiveSubscription()
+        && hasAcceptedCurrentNDA()
+        && resource.data.status == 'active'
+        && (!('visibility' in resource.data) || resource.data.visibility == 'public');
+      allow create, update, delete: if false;
+    }
+
+    match /pitches/{pitchId} {
+      allow read: if signedIn()
+        && (
+          resource.data.patronId == request.auth.uid ||
+          resource.data.innovatorId == request.auth.uid
+        );
+      // Pitch creation and transitions are server-only callables so the server
+      // can enforce state transitions, word limits, and notifications.
+      allow create, update, delete: if false;
+
+      match /messages/{messageId} {
+        allow read: if isPitchParticipant(pitchId);
+        allow create, update, delete: if false;
+      }
+
+      match /proposals/{proposalId} {
+        allow read: if isPitchParticipant(pitchId);
+        allow create, update, delete: if false;
+      }
+
+      match /reports/{reportId} {
+        allow read: if isPitchParticipant(pitchId) || isAdmin();
+        allow create, update, delete: if false;
+      }
+    }
+
+    match /ideaReports/{reportId} {
+      allow read: if isAdmin()
+        || (signedIn() && resource.data.reporterId == request.auth.uid);
+      allow create, update, delete: if false;
+    }
+
+    match /reportStats/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    match /smartEngineRuns/{runId} {
+      allow read, write: if false;
+    }
+
+    // Audit-logg av hver tilgang til idé-body. Skrives kun av Cloud Functions
+    // (Admin SDK bypasser disse reglene). Aldri lesbar fra klient — admin-innsyn
+    // går via egen admin-Function med tilgangskontroll og logging.
+    match /accessLogs/{logId} {
+      allow read, write: if false;
+    }
+
+    // Hash-ledger: uforanderlig bevis på at innovator submittet en gitt idé
+    // på et gitt tidspunkt. Skrives kun av Cloud Function ved submission.
+    match /hashLedger/{entryId} {
+      allow read, write: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

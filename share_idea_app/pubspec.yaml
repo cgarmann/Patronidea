@@ -1,0 +1,116 @@
+name: share_idea_app
+description: FRUMA - high-end idea marketplace for Innovators and Patrons.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Firebase
+  firebase_core: ^3.3.0
+  firebase_auth: ^5.1.0
+  cloud_firestore: ^5.2.0
+  cloud_functions: ^5.0.0
+  firebase_app_check: ^0.3.0
+
+  # Google Sign-In
+  google_sign_in: ^6.2.1
+
+  # State Management
+  flutter_riverpod: ^2.5.1
+  riverpod_annotation: ^2.3.5
+
+  # Navigation
+  go_router: ^14.2.0
+
+  # Payments
+  in_app_purchase: ^3.2.0
+  flutter_stripe: ^10.1.1
+
+  # UI
+  flutter_animate: ^4.5.0
+  shimmer: ^3.0.0
+  cached_network_image: ^3.3.1
+  lottie: ^3.1.2
+
+  # Utils
+  intl: ^0.19.0
+  shared_preferences: ^2.3.0
+  uuid: ^4.4.2
+  equatable: ^2.0.5
+  logger: ^2.4.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  build_runner: ^2.4.11
+  riverpod_generator: ^2.4.3
+  custom_lint: ^0.6.4
+  riverpod_lint: ^2.3.13
+  # Splash screen - run: dart run flutter_native_splash:create
+  # Currently configured with brand colors only (no logo). Re-run after logo is added.
+  flutter_native_splash: ^2.4.0
+  # App icon - DEFERRED until final logo exists.
+  # When logo is ready: add image_path, then run: dart run flutter_launcher_icons
+  flutter_launcher_icons: ^0.14.1
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
+    - assets/animations/
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/SpaceGrotesk-Regular.ttf
+        - asset: assets/fonts/SpaceGrotesk-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/SpaceGrotesk-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/SpaceGrotesk-Bold.ttf
+          weight: 700
+    - family: SpaceGrotesk
+      fonts:
+        - asset: assets/fonts/SpaceGrotesk-Regular.ttf
+        - asset: assets/fonts/SpaceGrotesk-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/SpaceGrotesk-Bold.ttf
+          weight: 700
+
+# Splash screen (flutter_native_splash)
+# Configured with brand colors only - no logo image required.
+# When final logo is ready: add `image:` and `image_dark:` lines, then re-run.
+# Run command: dart run flutter_native_splash:create
+flutter_native_splash:
+  color: "#F8F3E8"        # FRUMA light bg
+  color_dark: "#06140F"   # FRUMA dark bg
+  # DEFERRED: uncomment and set image path once logo is finalised
+  # image: assets/images/splash_logo.png
+  # image_dark: assets/images/splash_logo_dark.png
+  android_12:
+    color: "#F8F3E8"
+    color_dark: "#06140F"
+    # image: assets/images/splash_logo.png
+  ios: true
+  android: true
+  web: false
+
+# App icon (flutter_launcher_icons)
+# DEFERRED - do not run until final logo PNG (1024x1024, no alpha) exists.
+# When ready:
+#   1. Place master icon at assets/images/app_icon.png
+#   2. Uncomment image_path lines below
+#   3. Run: dart run flutter_launcher_icons
+flutter_icons:
+  ios: true
+  android: true
+  # DEFERRED: uncomment once logo is ready
+  # image_path: "assets/images/app_icon.png"
+  # image_path_ios: "assets/images/app_icon.png"
+  remove_alpha_ios: true
+  min_sdk_android: 21

@@ -1,0 +1,7 @@
+firebase-functions>=0.1.0
+firebase-admin>=6.5.0
+sentence-transformers==2.7.0
+numpy==1.26.4
+# CPU-only torch — mye lettere enn full GPU-pakke
+torch==2.3.0+cpu
+--extra-index-url https://download.pytorch.org/whl/cpu
