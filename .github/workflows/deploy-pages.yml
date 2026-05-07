@@ -37,12 +37,10 @@ jobs:
         working-directory: share_idea_app
         env:
           BASE_HREF: ${{ vars.PAGES_BASE_HREF }}
-          PAGES_CNAME: ${{ vars.PAGES_CNAME }}
+          PAGES_CNAME: ${{ vars.PAGES_CNAME || 'fruma.schjoldr.io' }}
         run: |
           flutter build web --release --base-href "${BASE_HREF:-/}"
-          if [ -n "$PAGES_CNAME" ]; then
-            printf "%s" "$PAGES_CNAME" > build/web/CNAME
-          fi
+          printf "%s" "$PAGES_CNAME" > build/web/CNAME
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
