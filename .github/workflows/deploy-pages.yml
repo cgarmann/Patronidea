@@ -1,4 +1,4 @@
-name: Deploy Flutter web to GitHub Pages
+name: Deploy FRUMA website to GitHub Pages
 
 on:
   push:
@@ -16,48 +16,24 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: 3.32.8
-          cache: true
-
-      - name: Install dependencies
-        working-directory: share_idea_app
-        run: flutter pub get
-
-      - name: Build web
-        working-directory: share_idea_app
-        env:
-          BASE_HREF: ${{ vars.PAGES_BASE_HREF }}
-          PAGES_CNAME: ${{ vars.PAGES_CNAME || 'fruma.schjoldr.io' }}
-        run: |
-          flutter build web --release --base-href "${BASE_HREF:-/}"
-          printf "%s" "$PAGES_CNAME" > build/web/CNAME
-
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
-      - name: Upload Pages artifact
+      - name: Upload website
         uses: actions/upload-pages-artifact@v3
         with:
-          path: share_idea_app/build/web
+          path: site
 
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    needs: build
-
-    steps:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
