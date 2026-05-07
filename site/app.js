@@ -404,13 +404,16 @@ function openRequestModal(ideaId) {
       <button class="button ghost" onclick="closeModal()">Close</button>
     </div>
     <div class="field">
-      <label>Intent</label>
+      <label>Request intent</label>
       <select id="request-intent">
-        <option>Partnership</option>
-        <option>License</option>
-        <option>Buy full rights</option>
+        <option>Request exclusive review</option>
+        <option>Request contact / explore collaboration</option>
+        <option>Request licensing discussion</option>
       </select>
     </div>
+    <p class="muted">
+      This request opens controlled access and negotiation only. The idea owner keeps rights unless a later Deal Room agreement says otherwise.
+    </p>
     <div class="field">
       <label>Short message</label>
       <textarea id="request-message" rows="4">We want to explore this opportunity and understand fit for a pilot.</textarea>

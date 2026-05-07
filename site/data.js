@@ -114,8 +114,8 @@ window.FRUMA_DATA = {
     { id: "sub-4", userId: "user-5", plan: "Pro", status: "trial", renewal: "2026-05-21", amount: "299 kr/month" }
   ],
   requests: [
-    { id: "req-201", ideaId: "idea-103", patronId: "user-1", intent: "Partnership", status: "approved", message: "We want to explore a pilot with regional restaurants.", createdAt: "2026-05-04" },
-    { id: "req-202", ideaId: "idea-105", patronId: "user-2", intent: "License", status: "pending", message: "Interested in evaluating fit for pharmacy groups.", createdAt: "2026-05-06" }
+    { id: "req-201", ideaId: "idea-103", patronId: "user-1", intent: "Request contact / explore collaboration", status: "approved", message: "We want to explore a pilot with regional restaurants.", createdAt: "2026-05-04" },
+    { id: "req-202", ideaId: "idea-105", patronId: "user-2", intent: "Request licensing discussion", status: "pending", message: "Interested in evaluating fit for pharmacy groups.", createdAt: "2026-05-06" }
   ],
   deals: [
     {
@@ -166,7 +166,7 @@ window.FRUMA_DATA = {
   ],
   contactLog: [
     { id: "log-801", userId: "user-1", linked: "deal-301", status: "needs follow-up", subject: "Pilot scope clarification", lastActivity: "2026-05-06" },
-    { id: "log-802", userId: "user-2", linked: "req-202", status: "waiting", subject: "License request pending", lastActivity: "2026-05-06" },
+    { id: "log-802", userId: "user-2", linked: "req-202", status: "waiting", subject: "Licensing discussion request pending", lastActivity: "2026-05-06" },
     { id: "log-803", userId: "user-4", linked: "sub-3", status: "billing", subject: "Past due subscription", lastActivity: "2026-05-04" }
   ]
 };
