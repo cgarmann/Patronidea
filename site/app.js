@@ -4,11 +4,18 @@ const state = {
   role: "patron",
   route: "#/patron/vault",
   query: "",
-  filters: { category: "All", status: "All" },
+  filters: {
+    category: "All",
+    status: "All",
+    maturity: "All",
+    requestState: "All",
+    innovatorBackground: "All"
+  },
   favorites: new Set(["idea-102", "idea-103"]),
   selectedDealId: "deal-301",
   reviewFilter: "All",
   adminDecisions: {},
+  inlineReview: null,
   requests: [...data.requests],
   deals: [...data.deals],
   offers: [...data.offers],
@@ -112,21 +119,71 @@ function renderRoute() {
 function renderVault() {
   const ideas = filteredIdeas();
   return `
-    ${viewHead("Vault", "Discover reviewed opportunities, inspect fit, then send a controlled request.", "Send request from detail")}
+    ${viewHead("Vault", "Enterprise discovery queue for reviewed opportunities and controlled access requests.")}
     <div class="split">
-      <aside class="panel filter-panel">
+      <aside class="panel filter-panel compact-filter">
         <h3>Filters</h3>
-        ${selectField("Category", "category", ["All", ...data.categories], state.filters.category, "setFilter")}
+        ${selectField("Idea category", "category", ["All", ...data.categories], state.filters.category, "setFilter")}
+        ${selectField("Innovator background", "innovatorBackground", ["All", ...data.innovatorBackgrounds], state.filters.innovatorBackground, "setFilter")}
         ${selectField("Status", "status", ["All", "active", "pending request", "in negotiation"], state.filters.status, "setFilter")}
+        ${selectField("Maturity", "maturity", ["All", ...uniqueIdeaValues("maturity")], state.filters.maturity, "setFilter")}
+        ${selectField("Request state", "requestState", ["All", ...uniqueIdeaValues("requestState")], state.filters.requestState, "setFilter")}
         <button class="button" onclick="clearFilters()">Clear filters</button>
       </aside>
       <div>
         ${renderFilterChips()}
-        <div class="grid cols-2">
-          ${ideas.length ? ideas.map(renderIdeaCard).join("") : emptyState("No ideas match these filters.")}
+        <div class="table-card vault-table-card">
+          <table class="vault-table">
+            <thead>
+              <tr>
+                <th>Opportunity brief</th>
+                <th>Domain</th>
+                <th>Source background</th>
+                <th>Status</th>
+                <th>Maturity</th>
+                <th>Signal</th>
+                <th>Requests</th>
+                <th>Last activity</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${ideas.length ? ideas.map(renderVaultRow).join("") : `<tr><td colspan="9">${emptyState("No ideas match these filters.")}</td></tr>`}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
+  `;
+}
+
+function renderVaultRow(idea) {
+  return `
+    <tr class="vault-row">
+      <td class="brief-cell">
+        <strong>${idea.title}</strong>
+        <p>${idea.summary}</p>
+      </td>
+      <td><span class="badge info">${idea.category}</span></td>
+      <td>${idea.innovatorBackground}</td>
+      <td>${statusBadge(idea.status)}</td>
+      <td>${idea.maturity}</td>
+      <td>
+        <strong>${idea.confidence}</strong>
+        <span class="cell-note">${idea.validationState}</span>
+      </td>
+      <td>
+        <strong>${idea.requestCount}</strong>
+        <span class="cell-note">${idea.requestState}</span>
+      </td>
+      <td>${idea.updatedAt}</td>
+      <td>
+        <div class="row-actions">
+          <button class="button primary compact" onclick="go('#/patron/idea/${idea.id}')">Open brief</button>
+          <button class="button compact" onclick="openRequestModal('${idea.id}')">Request access</button>
+        </div>
+      </td>
+    </tr>
   `;
 }
 
@@ -306,7 +363,7 @@ function renderAdminDashboard() {
 function renderReviewQueue() {
   const items = data.reviewItems.filter((item) => state.reviewFilter === "All" || effectiveReviewStatus(item) === state.reviewFilter);
   return `
-    ${viewHead("Review queue", "Review, decide and record reasons for admin decisions.", "Show all", "setReviewFilter('All')")}
+    ${viewHead("Review queue", "Fast operator triage for submitted ideas and review outcomes.", "Show all", "setReviewFilter('All')")}
     <div class="chips">
       ${["All", "under review", "approved", "rejected", "returned"].map((status) => `<button class="chip" onclick="setReviewFilter('${status}')">${status}</button>`).join("")}
     </div>
@@ -316,18 +373,49 @@ function renderReviewQueue() {
         <tbody>
           ${items.map((item) => {
             const idea = findIdea(item.ideaId);
+            const decision = state.adminDecisions[item.id];
             return `<tr>
               <td><strong>${idea.title}</strong><br><span class="muted">${idea.summary}</span></td>
               <td>${item.category}</td>
-              <td>${statusBadge(effectiveReviewStatus(item))}</td>
+              <td>
+                ${statusBadge(effectiveReviewStatus(item))}
+                ${decision?.reason ? `<span class="cell-note">${decision.reason}</span>` : ""}
+              </td>
               <td>${statusBadge(item.risk)}</td>
               <td>${item.score}</td>
-              <td><button class="button primary" onclick="openReviewModal('${item.id}')">Decide</button></td>
-            </tr>`;
+              <td>
+                <div class="review-actions">
+                  <button class="button primary compact" onclick="submitDecision('${item.id}', 'approved')">Approve</button>
+                  <button class="button compact" onclick="startInlineDecision('${item.id}', 'returned')">Return</button>
+                  <button class="button danger compact" onclick="startInlineDecision('${item.id}', 'rejected')">Reject</button>
+                </div>
+              </td>
+            </tr>
+            ${renderInlineDecisionRow(item, idea)}`;
           }).join("")}
         </tbody>
       </table>
     </div>
+  `;
+}
+
+function renderInlineDecisionRow(item, idea) {
+  if (!state.inlineReview || state.inlineReview.id !== item.id) return "";
+  const label = state.inlineReview.status === "rejected" ? "Reject reason" : "Return reason";
+  return `
+    <tr class="inline-decision-row">
+      <td colspan="6">
+        <div class="inline-decision">
+          <div>
+            <strong>${label}</strong>
+            <span class="muted">${idea.title}</span>
+          </div>
+          <input id="review-reason-${item.id}" value="${escapeHtml(state.inlineReview.reason)}" placeholder="Short operator note">
+          <button class="button primary compact" onclick="submitInlineDecision('${item.id}')">Apply</button>
+          <button class="button compact" onclick="cancelInlineDecision()">Cancel</button>
+        </div>
+      </td>
+    </tr>
   `;
 }
 
@@ -449,7 +537,7 @@ function openOfferModal(mode = "proposal") {
       <div><h2>${mode === "counter" ? "Send counteroffer" : "Submit proposal"}</h2><p>Demo state updates immediately.</p></div>
       <button class="button ghost" onclick="closeModal()">Close</button>
     </div>
-    <div class="field"><label>Deal type</label><select id="offer-type"><option>Partnership</option><option>License</option><option>Buy</option></select></div>
+    <div class="field"><label>Deal track</label><select id="offer-type"><option>Partnership</option><option>License discussion</option><option>Assignment discussion</option></select></div>
     <div class="field"><label>Amount NOK</label><input id="offer-amount" type="number" value="58000"></div>
     <div class="field"><label>Note</label><textarea id="offer-note" rows="3">Proposal includes pilot scope, reporting and success criteria.</textarea></div>
     <button class="button primary" onclick="submitOffer('${mode}')">Submit</button>
@@ -480,29 +568,28 @@ function submitOffer(mode) {
   render();
 }
 
-function openReviewModal(reviewId) {
-  const item = data.reviewItems.find((review) => review.id === reviewId);
-  const idea = findIdea(item.ideaId);
-  state.modal = `
-    <div class="modal-head">
-      <div><h2>Review decision</h2><p>${idea.title}</p></div>
-      <button class="button ghost" onclick="closeModal()">Close</button>
-    </div>
-    <p>${idea.summary}</p>
-    <div class="field"><label>Reason</label><textarea id="decision-reason" rows="4">Decision based on quality, fit and review rules.</textarea></div>
-    <div class="action-row">
-      <button class="button primary" onclick="submitDecision('${reviewId}', 'approved')">Approve</button>
-      <button class="button" onclick="submitDecision('${reviewId}', 'returned')">Return for improvement</button>
-      <button class="button danger" onclick="submitDecision('${reviewId}', 'rejected')">Reject</button>
-    </div>
-  `;
-  renderModal();
+function startInlineDecision(reviewId, status) {
+  state.inlineReview = {
+    id: reviewId,
+    status,
+    reason: status === "rejected" ? "Does not meet originality or fit threshold." : "Needs clearer problem, buyer and validation detail."
+  };
+  render();
 }
 
-function submitDecision(reviewId, status) {
-  const reason = document.getElementById("decision-reason").value.trim();
+function submitInlineDecision(reviewId) {
+  const reason = document.getElementById(`review-reason-${reviewId}`).value.trim();
+  submitDecision(reviewId, state.inlineReview.status, reason);
+}
+
+function cancelInlineDecision() {
+  state.inlineReview = null;
+  render();
+}
+
+function submitDecision(reviewId, status, reason = "Approved from queue triage.") {
   state.adminDecisions[reviewId] = { status, reason, at: "2026-05-07" };
-  closeModal();
+  state.inlineReview = null;
   render();
 }
 
@@ -535,7 +622,13 @@ function setFilter(key, value) {
 }
 
 function clearFilters() {
-  state.filters = { category: "All", status: "All" };
+  state.filters = {
+    category: "All",
+    status: "All",
+    maturity: "All",
+    requestState: "All",
+    innovatorBackground: "All"
+  };
   state.query = "";
   render();
 }
@@ -565,16 +658,26 @@ function filteredIdeas() {
     const matchesQuery = !query || [idea.title, idea.summary, idea.category, ...idea.tags].join(" ").toLowerCase().includes(query);
     const matchesCategory = state.filters.category === "All" || idea.category === state.filters.category;
     const matchesStatus = state.filters.status === "All" || idea.status === state.filters.status;
-    return matchesQuery && matchesCategory && matchesStatus;
+    const matchesMaturity = state.filters.maturity === "All" || idea.maturity === state.filters.maturity;
+    const matchesRequestState = state.filters.requestState === "All" || idea.requestState === state.filters.requestState;
+    const matchesBackground = state.filters.innovatorBackground === "All" || idea.innovatorBackground === state.filters.innovatorBackground;
+    return matchesQuery && matchesCategory && matchesStatus && matchesMaturity && matchesRequestState && matchesBackground;
   });
 }
 
 function renderFilterChips() {
   const chips = [];
   if (state.query) chips.push(`Search: ${state.query}`);
-  if (state.filters.category !== "All") chips.push(`Category: ${state.filters.category}`);
+  if (state.filters.category !== "All") chips.push(`Idea category: ${state.filters.category}`);
+  if (state.filters.innovatorBackground !== "All") chips.push(`Background: ${state.filters.innovatorBackground}`);
   if (state.filters.status !== "All") chips.push(`Status: ${state.filters.status}`);
-  return chips.length ? `<div class="chips">${chips.map((chip) => `<button class="chip" onclick="clearFilters()">${chip} x</button>`).join("")}</div>` : `<div class="chips"><span class="muted">Showing all active demo opportunities</span></div>`;
+  if (state.filters.maturity !== "All") chips.push(`Maturity: ${state.filters.maturity}`);
+  if (state.filters.requestState !== "All") chips.push(`Request state: ${state.filters.requestState}`);
+  return chips.length ? `<div class="chips">${chips.map((chip) => `<button class="chip" onclick="clearFilters()">${chip} x</button>`).join("")}</div>` : `<div class="chips"><span class="muted">Showing all accessible opportunities</span></div>`;
+}
+
+function uniqueIdeaValues(key) {
+  return [...new Set(data.ideas.map((idea) => idea[key]).filter(Boolean))];
 }
 
 function selectField(label, key, options, value, handler) {
@@ -601,14 +704,14 @@ function statusBadge(status) {
   const normalized = String(status).toLowerCase();
   let className = "";
   if (["active", "approved", "accepted", "low"].includes(normalized)) className = "success";
-  if (["pending", "under review", "in negotiation", "pending request", "proposal sent", "counteroffer received", "medium", "investigating", "waiting", "needs follow-up"].includes(normalized)) className = "pending";
+  if (["pending", "under review", "in negotiation", "pending request", "proposal sent", "counteroffer received", "medium", "investigating", "waiting", "needs follow-up", "returned"].includes(normalized)) className = "pending";
   if (["rejected", "flagged", "past due", "high"].includes(normalized)) className = "danger";
   return `<span class="badge ${className}">${status}</span>`;
 }
 
 function favoriteButton(id, mode = "icon") {
   const active = state.favorites.has(id);
-  return `<button class="favorite ${active ? "active" : ""}" onclick="toggleFavorite('${id}')">${mode === "full" ? (active ? "Saved" : "Save") : "♥"}</button>`;
+  return `<button class="favorite ${active ? "active" : ""}" onclick="toggleFavorite('${id}')">${mode === "full" ? (active ? "Saved" : "Save") : (active ? "Saved" : "Save")}</button>`;
 }
 
 function navCount(label) {
