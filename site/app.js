@@ -13,9 +13,12 @@ const state = {
   },
   favorites: new Set(["idea-102", "idea-103"]),
   selectedDealId: "deal-301",
-  reviewFilter: "All",
+  reviewFilter: "Queue",
   adminDecisions: {},
+  selectedReviews: new Set(),
   inlineReview: null,
+  undoReview: null,
+  undoTimer: null,
   requests: [...data.requests],
   deals: [...data.deals],
   offers: [...data.offers],
@@ -361,20 +364,38 @@ function renderAdminDashboard() {
 }
 
 function renderReviewQueue() {
-  const items = data.reviewItems.filter((item) => state.reviewFilter === "All" || effectiveReviewStatus(item) === state.reviewFilter);
+  const items = filteredReviewItems();
+  const selectedVisibleCount = items.filter((item) => state.selectedReviews.has(item.id)).length;
   return `
-    ${viewHead("Review queue", "Fast operator triage for submitted ideas and review outcomes.", "Show all", "setReviewFilter('All')")}
-    <div class="chips">
-      ${["All", "under review", "approved", "rejected", "returned"].map((status) => `<button class="chip" onclick="setReviewFilter('${status}')">${status}</button>`).join("")}
+    ${viewHead("Review queue", "Inbox Zero triage for submitted ideas. Standard actions archive rows immediately.", "Show queue", "setReviewFilter('Queue')")}
+    ${renderUndoReview()}
+    <div class="review-toolbar">
+      <div class="chips">
+        ${["Queue", "approved", "rejected", "returned", "deleted", "All"].map((status) => `<button class="chip ${state.reviewFilter === status ? "active" : ""}" onclick="setReviewFilter('${status}')">${status}</button>`).join("")}
+      </div>
+      <span class="muted">${items.length} visible</span>
     </div>
-    <div class="table-card">
-      <table>
-        <thead><tr><th>Idea</th><th>Category</th><th>Status</th><th>Risk</th><th>Score</th><th>Action</th></tr></thead>
+    ${selectedVisibleCount >= 2 ? renderBulkReviewActions(selectedVisibleCount) : ""}
+    <div class="table-card review-inbox-card">
+      <table class="review-inbox-table">
+        <thead>
+          <tr>
+            <th class="check-col"><input type="checkbox" ${items.length && selectedVisibleCount === items.length ? "checked" : ""} onchange="toggleAllVisibleReviews(this.checked)"></th>
+            <th>Idea</th>
+            <th>Category</th>
+            <th>Status</th>
+            <th>Risk</th>
+            <th>Score</th>
+            <th>Submitted</th>
+            <th class="action-col">Quick actions</th>
+          </tr>
+        </thead>
         <tbody>
-          ${items.map((item) => {
+          ${items.length ? items.map((item) => {
             const idea = findIdea(item.ideaId);
             const decision = state.adminDecisions[item.id];
-            return `<tr>
+            return `<tr class="review-inbox-row">
+              <td class="check-col"><input type="checkbox" ${state.selectedReviews.has(item.id) ? "checked" : ""} onchange="toggleReviewSelection('${item.id}', this.checked)"></td>
               <td><strong>${idea.title}</strong><br><span class="muted">${idea.summary}</span></td>
               <td>${item.category}</td>
               <td>
@@ -383,35 +404,68 @@ function renderReviewQueue() {
               </td>
               <td>${statusBadge(item.risk)}</td>
               <td>${item.score}</td>
-              <td>
+              <td>${item.submittedAt}</td>
+              <td class="action-col">
                 <div class="review-actions">
-                  <button class="button primary compact" onclick="submitDecision('${item.id}', 'approved')">Approve</button>
-                  <button class="button compact" onclick="startInlineDecision('${item.id}', 'returned')">Return</button>
-                  <button class="button danger compact" onclick="startInlineDecision('${item.id}', 'rejected')">Reject</button>
+                  <button class="button primary compact" onclick="quickReviewDecision('${item.id}', 'approved')">Approve</button>
+                  <button class="button compact" onclick="quickReviewDecision('${item.id}', 'returned')">Return</button>
+                  <button class="button danger compact" onclick="quickReviewDecision('${item.id}', 'rejected')">Reject</button>
+                  <button class="icon-button" title="Edit note" aria-label="Edit note" onclick="startInlineDecision('${item.id}')">...</button>
                 </div>
               </td>
             </tr>
             ${renderInlineDecisionRow(item, idea)}`;
-          }).join("")}
+          }).join("") : `<tr><td colspan="8">${emptyState("Queue is clear for this filter.")}</td></tr>`}
         </tbody>
       </table>
     </div>
   `;
 }
 
+function filteredReviewItems() {
+  return data.reviewItems.filter((item) => {
+    const status = effectiveReviewStatus(item);
+    if (state.reviewFilter === "All") return true;
+    if (state.reviewFilter === "Queue") return status === "under review";
+    return status === state.reviewFilter;
+  });
+}
+
+function renderBulkReviewActions(count) {
+  return `
+    <div class="bulk-actions">
+      <strong>${count} selected</strong>
+      <button class="button primary compact" onclick="bulkReviewDecision('approved')">Mark approved</button>
+      <button class="button danger compact" onclick="bulkReviewDecision('rejected')">Mark rejected</button>
+      <button class="button compact" onclick="bulkReviewDecision('deleted')">Delete</button>
+      <button class="button ghost compact" onclick="clearReviewSelection()">Clear</button>
+    </div>
+  `;
+}
+
+function renderUndoReview() {
+  if (!state.undoReview) return "";
+  return `
+    <div class="undo-bar">
+      <span>${state.undoReview.label}</span>
+      <button class="button compact" onclick="undoReviewDecision()">Undo</button>
+    </div>
+  `;
+}
+
 function renderInlineDecisionRow(item, idea) {
   if (!state.inlineReview || state.inlineReview.id !== item.id) return "";
-  const label = state.inlineReview.status === "rejected" ? "Reject reason" : "Return reason";
   return `
     <tr class="inline-decision-row">
-      <td colspan="6">
+      <td colspan="8">
         <div class="inline-decision">
           <div>
-            <strong>${label}</strong>
+            <strong>Optional note</strong>
             <span class="muted">${idea.title}</span>
           </div>
           <input id="review-reason-${item.id}" value="${escapeHtml(state.inlineReview.reason)}" placeholder="Short operator note">
-          <button class="button primary compact" onclick="submitInlineDecision('${item.id}')">Apply</button>
+          <button class="button compact" onclick="submitInlineDecision('${item.id}', 'returned')">Return</button>
+          <button class="button danger compact" onclick="submitInlineDecision('${item.id}', 'rejected')">Reject</button>
           <button class="button compact" onclick="cancelInlineDecision()">Cancel</button>
         </div>
       </td>
@@ -568,18 +622,17 @@ function submitOffer(mode) {
   render();
 }
 
-function startInlineDecision(reviewId, status) {
+function startInlineDecision(reviewId) {
   state.inlineReview = {
     id: reviewId,
-    status,
-    reason: status === "rejected" ? "Does not meet originality or fit threshold." : "Needs clearer problem, buyer and validation detail."
+    reason: state.adminDecisions[reviewId]?.reason || "Needs clearer problem, buyer and validation detail."
   };
   render();
 }
 
-function submitInlineDecision(reviewId) {
+function submitInlineDecision(reviewId, status) {
   const reason = document.getElementById(`review-reason-${reviewId}`).value.trim();
-  submitDecision(reviewId, state.inlineReview.status, reason);
+  submitDecision(reviewId, status, reason || defaultReviewReason(status), true);
 }
 
 function cancelInlineDecision() {
@@ -587,9 +640,91 @@ function cancelInlineDecision() {
   render();
 }
 
-function submitDecision(reviewId, status, reason = "Approved from queue triage.") {
-  state.adminDecisions[reviewId] = { status, reason, at: "2026-05-07" };
+function quickReviewDecision(reviewId, status) {
+  submitDecision(reviewId, status, defaultReviewReason(status), true);
+}
+
+function bulkReviewDecision(status) {
+  const ids = filteredReviewItems()
+    .filter((item) => state.selectedReviews.has(item.id))
+    .map((item) => item.id);
+  if (!ids.length) return;
+  const previous = {};
+  ids.forEach((id) => {
+    previous[id] = state.adminDecisions[id] || null;
+    state.adminDecisions[id] = { status, reason: defaultReviewReason(status), at: "2026-05-07" };
+    state.selectedReviews.delete(id);
+  });
+  setUndoReview({
+    ids,
+    previous,
+    label: `${ids.length} items marked ${status}.`
+  });
   state.inlineReview = null;
+  render();
+}
+
+function submitDecision(reviewId, status, reason = defaultReviewReason(status), showUndo = false) {
+  const previous = state.adminDecisions[reviewId] || null;
+  state.adminDecisions[reviewId] = { status, reason, at: "2026-05-07" };
+  state.selectedReviews.delete(reviewId);
+  state.inlineReview = null;
+  if (showUndo) {
+    setUndoReview({
+      ids: [reviewId],
+      previous: { [reviewId]: previous },
+      label: `${findIdea(data.reviewItems.find((item) => item.id === reviewId).ideaId).title} marked ${status}.`
+    });
+  }
+  render();
+}
+
+function defaultReviewReason(status) {
+  if (status === "approved") return "Approved from queue triage.";
+  if (status === "returned") return "Returned for clearer problem, buyer and validation detail.";
+  if (status === "deleted") return "Removed from review queue.";
+  return "Low score.";
+}
+
+function setUndoReview(payload) {
+  if (state.undoTimer) clearTimeout(state.undoTimer);
+  state.undoReview = payload;
+  state.undoTimer = setTimeout(() => {
+    state.undoReview = null;
+    state.undoTimer = null;
+    render();
+  }, 4000);
+}
+
+function undoReviewDecision() {
+  if (!state.undoReview) return;
+  Object.entries(state.undoReview.previous).forEach(([id, previous]) => {
+    if (previous) {
+      state.adminDecisions[id] = previous;
+    } else {
+      delete state.adminDecisions[id];
+    }
+  });
+  if (state.undoTimer) clearTimeout(state.undoTimer);
+  state.undoReview = null;
+  state.undoTimer = null;
+  render();
+}
+
+function toggleReviewSelection(reviewId, selected) {
+  selected ? state.selectedReviews.add(reviewId) : state.selectedReviews.delete(reviewId);
+  render();
+}
+
+function toggleAllVisibleReviews(selected) {
+  filteredReviewItems().forEach((item) => {
+    selected ? state.selectedReviews.add(item.id) : state.selectedReviews.delete(item.id);
+  });
+  render();
+}
+
+function clearReviewSelection() {
+  state.selectedReviews.clear();
   render();
 }
 
@@ -635,6 +770,8 @@ function clearFilters() {
 
 function setReviewFilter(status) {
   state.reviewFilter = status;
+  state.selectedReviews.clear();
+  state.inlineReview = null;
   render();
 }
 
@@ -705,7 +842,7 @@ function statusBadge(status) {
   let className = "";
   if (["active", "approved", "accepted", "low"].includes(normalized)) className = "success";
   if (["pending", "under review", "in negotiation", "pending request", "proposal sent", "counteroffer received", "medium", "investigating", "waiting", "needs follow-up", "returned"].includes(normalized)) className = "pending";
-  if (["rejected", "flagged", "past due", "high"].includes(normalized)) className = "danger";
+  if (["rejected", "flagged", "past due", "high", "deleted"].includes(normalized)) className = "danger";
   return `<span class="badge ${className}">${status}</span>`;
 }
 

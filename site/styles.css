@@ -371,6 +371,12 @@ p,
   background: var(--surface);
 }
 
+.chip.active {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: white;
+}
+
 .badge {
   background: #f2f4f7;
   color: #344054;
@@ -579,13 +585,114 @@ tr:hover td {
   gap: 6px;
 }
 
+.review-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+}
+
+.review-inbox-card {
+  box-shadow: none;
+}
+
+.review-inbox-table {
+  min-width: 960px;
+}
+
+.review-inbox-table th,
+.review-inbox-table td {
+  padding: 9px 10px;
+}
+
+.review-inbox-row td {
+  background: var(--surface);
+  transition: background 120ms ease;
+}
+
+.review-inbox-row:hover td {
+  background: #f8fafc;
+}
+
+.review-inbox-row .review-actions {
+  opacity: 0;
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+  transition: opacity 120ms ease;
+}
+
+.review-inbox-row:hover .review-actions,
+.review-inbox-row:focus-within .review-actions {
+  opacity: 1;
+}
+
+.check-col {
+  width: 38px;
+  text-align: center;
+}
+
+.check-col input {
+  width: 16px;
+  height: 16px;
+}
+
+.action-col {
+  width: 260px;
+  text-align: right;
+}
+
+.icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--muted);
+  font-weight: 900;
+}
+
+.icon-button:hover {
+  color: var(--ink);
+  border-color: var(--ink);
+}
+
+.bulk-actions,
+.undo-bar {
+  position: sticky;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  padding: 10px 12px;
+}
+
+.bulk-actions {
+  top: 76px;
+  margin-bottom: 12px;
+}
+
+.undo-bar {
+  top: 76px;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  border-color: #b7d8c9;
+  background: var(--green-soft);
+  color: var(--green);
+}
+
 .inline-decision-row td {
   background: #fbfcfd;
 }
 
 .inline-decision {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) minmax(260px, 2fr) auto auto;
+  grid-template-columns: minmax(180px, 1fr) minmax(260px, 2fr) auto auto auto;
   gap: 10px;
   align-items: center;
   border: 1px solid var(--line);
